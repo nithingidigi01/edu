@@ -4,41 +4,85 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+
+  download:
     runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        step: [download, extract, segment]
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.11"
 
-      - name: Install deps
-        run: pip install -r requirements.txt
+      - run: pip install -r requirements.txt
 
-      - name: Run Download
-        if: matrix.step == 'download'
+      - name: Download NCERT
         run: python scripts/download_ncert.py
 
-      - name: Run Extract
-        if: matrix.step == 'extract'
+      - name: Upload raw files
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw_ncert
+          path: raw_ncert/
+
+  extract:
+    runs-on: ubuntu-latest
+    needs: download
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Download raw files
+        uses: actions/download-artifact@v4
+        with:
+          name: raw_ncert
+          path: raw_ncert/
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - run: pip install -r requirements.txt
+
+      - name: Extract text
         run: python scripts/extract_text.py
 
-      - name: Run Segment
-        if: matrix.step == 'segment'
+      - name: Upload processed text
+        uses: actions/upload-artifact@v4
+        with:
+          name: processed_text
+          path: processed_text/
+
+  segment:
+    runs-on: ubuntu-latest
+    needs: extract
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Download processed text
+        uses: actions/download-artifact@v4
+        with:
+          name: processed_text
+          path: processed_text/
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - run: pip install -r requirements.txt
+
+      - name: Segment topics
         run: python scripts/segment_topics.py
 
-      - name: Commit Data
+      - name: Commit results
         run: |
           git config --global user.name "bot"
           git config --global user.email "bot@vidhwaan.com"
           git add .
-          git commit -m "Auto update NCERT data" || echo "No changes"
+          git commit -m "NCERT structured topics" || echo "No changes"
           git push
