@@ -1,101 +1,42 @@
-# scripts/download_ncert.py
+import os, requests
+from concurrent.futures import ThreadPoolExecutor
 
-import os
-import requests
-from bs4 import BeautifulSoup
-import time
+BASE = "raw_ncert/class6"
 
-BASE_PAGE = "https://ncert.nic.in/textbook.php"
-OUTPUT_DIR = "raw_ncert"
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0"
+DATA = {
+    "geography": [
+        "https://raw.githubusercontent.com/vidhwaan-data/ncert/main/class6/geography/ch1.pdf",
+        "https://raw.githubusercontent.com/vidhwaan-data/ncert/main/class6/geography/ch2.pdf"
+    ],
+    "history": [
+        "https://raw.githubusercontent.com/vidhwaan-data/ncert/main/class6/history/ch1.pdf"
+    ],
+    "science": [
+        "https://raw.githubusercontent.com/vidhwaan-data/ncert/main/class6/science/ch1.pdf"
+    ],
+    "polity": [
+        "https://raw.githubusercontent.com/vidhwaan-data/ncert/main/class6/polity/ch1.pdf"
+    ]
 }
 
-TARGET_CLASS = "6"   # we start with class 6
+def download(subject, idx, url):
+    path = f"{BASE}/{subject}/chapter{idx}.pdf"
+    os.makedirs(os.path.dirname(path), exist_ok=True)
 
+    if os.path.exists(path):
+        return
 
-def get_books():
-    print("🔍 Fetching NCERT book list...")
+    r = requests.get(url, timeout=30)
+    with open(path, "wb") as f:
+        f.write(r.content)
 
-    r = requests.get(BASE_PAGE, headers=HEADERS, timeout=20)
-    soup = BeautifulSoup(r.text, "lxml")
-
-    books = []
-
-    for option in soup.find_all("option"):
-        val = option.get("value")
-
-        if val and val.startswith(TARGET_CLASS):
-            books.append(val)
-
-    return books
-
-
-def get_pdf_links(book_code):
-    url = f"https://ncert.nic.in/textbook.php?{book_code}"
-    r = requests.get(url, headers=HEADERS, timeout=20)
-
-    soup = BeautifulSoup(r.text, "lxml")
-
-    pdf_links = []
-
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
-
-        if ".pdf" in href:
-            if not href.startswith("http"):
-                href = "https://ncert.nic.in/" + href
-
-            pdf_links.append(href)
-
-    return pdf_links
-
-
-def download_file(url, path):
-    for attempt in range(5):
-        try:
-            print(f"⬇️ {url}")
-
-            with requests.get(url, headers=HEADERS, stream=True, timeout=30) as r:
-                r.raise_for_status()
-
-                with open(path, "wb") as f:
-                    for chunk in r.iter_content(8192):
-                        f.write(chunk)
-
-            print(f"✅ Saved: {path}")
-            return
-
-        except Exception as e:
-            print(f"⚠️ Retry {attempt+1}: {e}")
-            time.sleep(5)
-
-    raise Exception(f"❌ Failed download: {url}")
-
+    print("✅", path)
 
 def main():
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-    books = get_books()
-
-    print(f"📚 Found {len(books)} books for class {TARGET_CLASS}")
-
-    for book in books:
-        print(f"\n📘 Processing book: {book}")
-
-        pdfs = get_pdf_links(book)
-
-        for i, pdf in enumerate(pdfs):
-            file_name = f"{book}_chapter_{i+1}.pdf"
-            path = os.path.join(OUTPUT_DIR, file_name)
-
-            if os.path.exists(path):
-                print(f"⏩ Skip: {file_name}")
-                continue
-
-            download_file(pdf, path)
-
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        for subject, urls in DATA.items():
+            for i, url in enumerate(urls, 1):
+                ex.submit(download, subject, i, url)
 
 if __name__ == "__main__":
     main()
