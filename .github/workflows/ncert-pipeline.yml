@@ -1,4 +1,4 @@
-name: UPSC Pipeline
+name: Vidhwaan Engine
 
 on:
   workflow_dispatch:
@@ -7,29 +7,28 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    strategy:
+      matrix:
+        step: [download, extract, segment, generate]
+
     steps:
       - uses: actions/checkout@v3
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v4
         with:
           python-version: "3.11"
 
       - run: pip install -r requirements.txt
 
-      - name: Extract Text
-        run: python scripts/extract_text.py
+      - run: |
+          if [ "${{ matrix.step }}" = "download" ]; then python scripts/download_ncert.py; fi
+          if [ "${{ matrix.step }}" = "extract" ]; then python scripts/extract_text.py; fi
+          if [ "${{ matrix.step }}" = "segment" ]; then python scripts/segment_topics.py; fi
+          if [ "${{ matrix.step }}" = "generate" ]; then python scripts/generate_engine.py; fi
 
-      - name: Segment Topics
-        run: python scripts/segment_topics.py
-
-      - name: Generate MCQs
-        run: python scripts/generate_mcqs.py
-
-      - name: Commit Results
-        run: |
+      - run: |
           git config --global user.name "bot"
           git config --global user.email "bot@vidhwaan.com"
           git add .
-          git commit -m "Auto generated UPSC data" || echo "No changes"
+          git commit -m "Auto build" || echo "No changes"
           git push
