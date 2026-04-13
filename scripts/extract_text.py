@@ -1,20 +1,23 @@
-# scripts/extract_text.py
-
-from pdfminer.high_level import extract_text
 import os
+from pdfminer.high_level import extract_text
+from concurrent.futures import ThreadPoolExecutor
 
-INPUT_DIR = "raw_ncert"
-OUTPUT_DIR = "processed_text"
+def process(path):
+    text = extract_text(path)
+    out = "processed_text/" + os.path.basename(path) + ".txt"
 
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+    os.makedirs("processed_text", exist_ok=True)
 
-for file in os.listdir(INPUT_DIR):
-    if file.endswith(".pdf"):
-        path = os.path.join(INPUT_DIR, file)
-        text = extract_text(path)
+    with open(out, "w", encoding="utf-8") as f:
+        f.write(text)
 
-        out_file = file.replace(".pdf", ".txt")
-        with open(os.path.join(OUTPUT_DIR, out_file), "w", encoding="utf-8") as f:
-            f.write(text)
+    print("📄", path)
 
-print("Text extraction complete")
+paths = []
+for root, _, files in os.walk("raw_ncert"):
+    for f in files:
+        if f.endswith(".pdf"):
+            paths.append(os.path.join(root, f))
+
+with ThreadPoolExecutor(max_workers=6) as ex:
+    ex.map(process, paths)
