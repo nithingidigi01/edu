@@ -1,0 +1,44 @@
+name: NCERT Pipeline
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        step: [download, extract, segment]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Run Download
+        if: matrix.step == 'download'
+        run: python scripts/download_ncert.py
+
+      - name: Run Extract
+        if: matrix.step == 'extract'
+        run: python scripts/extract_text.py
+
+      - name: Run Segment
+        if: matrix.step == 'segment'
+        run: python scripts/segment_topics.py
+
+      - name: Commit Data
+        run: |
+          git config --global user.name "bot"
+          git config --global user.email "bot@vidhwaan.com"
+          git add .
+          git commit -m "Auto update NCERT data" || echo "No changes"
+          git push
