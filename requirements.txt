@@ -1,5 +1,7 @@
 requests
 pdfminer.six
+beautifulsoup4
+lxml
 transformers
 torch
 sentencepiece
