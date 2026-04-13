@@ -1,11 +1,10 @@
-name: NCERT Pipeline
+name: UPSC Pipeline
 
 on:
   workflow_dispatch:
 
 jobs:
-
-  download:
+  build:
     runs-on: ubuntu-latest
 
     steps:
@@ -18,71 +17,19 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: Download NCERT
-        run: python scripts/download_ncert.py
-
-      - name: Upload raw files
-        uses: actions/upload-artifact@v4
-        with:
-          name: raw_ncert
-          path: raw_ncert/
-
-  extract:
-    runs-on: ubuntu-latest
-    needs: download
-
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Download raw files
-        uses: actions/download-artifact@v4
-        with:
-          name: raw_ncert
-          path: raw_ncert/
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.11"
-
-      - run: pip install -r requirements.txt
-
-      - name: Extract text
+      - name: Extract Text
         run: python scripts/extract_text.py
 
-      - name: Upload processed text
-        uses: actions/upload-artifact@v4
-        with:
-          name: processed_text
-          path: processed_text/
-
-  segment:
-    runs-on: ubuntu-latest
-    needs: extract
-
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Download processed text
-        uses: actions/download-artifact@v4
-        with:
-          name: processed_text
-          path: processed_text/
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.11"
-
-      - run: pip install -r requirements.txt
-
-      - name: Segment topics
+      - name: Segment Topics
         run: python scripts/segment_topics.py
 
-      - name: Commit results
+      - name: Generate MCQs
+        run: python scripts/generate_mcqs.py
+
+      - name: Commit Results
         run: |
           git config --global user.name "bot"
           git config --global user.email "bot@vidhwaan.com"
           git add .
-          git commit -m "NCERT structured topics" || echo "No changes"
+          git commit -m "Auto generated UPSC data" || echo "No changes"
           git push
