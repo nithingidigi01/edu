@@ -2,172 +2,65 @@
 
 import os
 import requests
-import time
-from bs4 import BeautifulSoup
-from concurrent.futures import ThreadPoolExecutor
 
-BASE = "https://ncert.nic.in/textbook.php"
-OUT = "raw_ncert"
+BASE_DIR = "raw_ncert"
 
-HEADERS = {"User-Agent": "Mozilla/5.0"}
-
-MAX_WORKERS = min(16, (os.cpu_count() or 4))
-RETRIES = 5
-TIMEOUT = 20
-
-session = requests.Session()
-session.headers.update(HEADERS)
-
-
-# -----------------------------
-# SAFE FETCH (FIXED)
-# -----------------------------
-def fetch(url):
-
-    for i in range(RETRIES):
-        try:
-            r = session.get(url, timeout=TIMEOUT)
-
-            if r.status_code == 200 and r.text:
-                return r.text
-
-        except Exception:
-            pass
-
-        time.sleep(2 + i)
-
-    print(f"❌ Failed to fetch: {url}")
-    return None
+# 🔥 REAL STRUCTURE (START — EXPANDABLE)
+DATA = {
+    "class6": {
+        "geography": [
+            "https://ncert.nic.in/textbook/pdf/fess101.pdf",
+            "https://ncert.nic.in/textbook/pdf/fess102.pdf",
+            "https://ncert.nic.in/textbook/pdf/fess103.pdf"
+        ],
+        "history": [
+            "https://ncert.nic.in/textbook/pdf/fess201.pdf"
+        ],
+        "science": [
+            "https://ncert.nic.in/textbook/pdf/fesc101.pdf"
+        ]
+    },
+    "class7": {
+        "geography": [
+            "https://ncert.nic.in/textbook/pdf/gesc101.pdf"
+        ]
+    }
+}
 
 
-# -----------------------------
-# GET BOOK CODES (SAFE)
-# -----------------------------
-def get_books():
-
-    html = fetch(BASE)
-
-    if not html:
-        print("❌ Cannot load NCERT base page")
-        return []
-
-    soup = BeautifulSoup(html, "lxml")
-
-    codes = set()
-
-    for opt in soup.find_all("option"):
-        val = opt.get("value")
-
-        if val and val[0].isdigit():
-            cls = int(val[0])
-            if 6 <= cls <= 12:
-                codes.add(val)
-
-    return list(codes)
-
-
-# -----------------------------
-# GET PDF LINKS (SAFE)
-# -----------------------------
-def get_pdfs(code):
-
-    html = fetch(f"{BASE}?{code}")
-
-    if not html:
-        return []
-
-    soup = BeautifulSoup(html, "lxml")
-
-    pdfs = []
-
-    for a in soup.find_all("a", href=True):
-        h = a["href"]
-
-        if ".pdf" in h:
-            if not h.startswith("http"):
-                h = "https://ncert.nic.in/" + h
-
-            pdfs.append(h)
-
-    return pdfs
-
-
-# -----------------------------
-# DOWNLOAD FILE
-# -----------------------------
 def download(url, path):
-
     if os.path.exists(path):
         return
 
-    for i in range(RETRIES):
-        try:
-            r = session.get(url, timeout=TIMEOUT)
-
-            if r.status_code == 200:
-                with open(path, "wb") as f:
-                    f.write(r.content)
-
-                print(f"✅ {path}")
-                return
-
-        except:
-            pass
-
-        time.sleep(2 + i)
-
-    print(f"❌ Failed: {url}")
-
-
-# -----------------------------
-# PROCESS BOOK
-# -----------------------------
-def process(code):
-
     try:
-        cls = f"class{code[0]}"
-        subject = code
+        r = requests.get(url, timeout=20)
+        r.raise_for_status()
 
-        pdfs = get_pdfs(code)
+        with open(path, "wb") as f:
+            f.write(r.content)
 
-        if not pdfs:
-            print(f"⚠️ No PDFs for {code}")
-            return
-
-        folder = os.path.join(OUT, cls, subject)
-        os.makedirs(folder, exist_ok=True)
-
-        for i, pdf in enumerate(pdfs, 1):
-            path = os.path.join(folder, f"chapter{i}.pdf")
-            download(pdf, path)
+        print(f"✅ {path}")
 
     except Exception as e:
-        print(f"❌ Book error: {code} | {e}")
+        print(f"❌ {url} | {e}")
 
 
-# -----------------------------
-# MAIN
-# -----------------------------
 def main():
 
-    print("🚀 NCERT DOWNLOAD START")
+    print("🚀 DOWNLOAD START")
 
-    codes = get_books()
+    for cls, subjects in DATA.items():
+        for subject, urls in subjects.items():
 
-    if not codes:
-        print("❌ No books found — stopping")
-        return
+            folder = os.path.join(BASE_DIR, cls, subject)
+            os.makedirs(folder, exist_ok=True)
 
-    print(f"📚 Books found: {len(codes)}")
-
-    with ThreadPoolExecutor(MAX_WORKERS) as ex:
-        ex.map(process, codes)
+            for i, url in enumerate(urls, 1):
+                path = os.path.join(folder, f"chapter{i}.pdf")
+                download(url, path)
 
     print("🔥 DOWNLOAD COMPLETE")
 
 
-# -----------------------------
-# ENTRY
-# -----------------------------
 if __name__ == "__main__":
     main()
