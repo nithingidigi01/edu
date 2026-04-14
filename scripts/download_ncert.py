@@ -6,28 +6,37 @@ from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor
 import time
 
+# -----------------------------
+# CONFIG
+# -----------------------------
 BASE_URL = "https://ncert.nic.in/textbook.php"
 DOWNLOAD_BASE = "raw_ncert"
 
+MAX_WORKERS = min(32, (os.cpu_count() or 4) * 2)
+RETRIES = 3
+TIMEOUT = 20
+
 HEADERS = {
-    "User-Agent": "Mozilla/5.0"
+    "User-Agent": "Mozilla/5.0",
+    "Connection": "keep-alive"
 }
 
-MAX_WORKERS = 10
-RETRIES = 3
+# 🔥 GLOBAL SESSION (10x faster)
+session = requests.Session()
+session.headers.update(HEADERS)
 
 
 # -----------------------------
-# FETCH PAGE
+# FETCH WITH RETRY
 # -----------------------------
 def fetch(url):
     for i in range(RETRIES):
         try:
-            r = requests.get(url, headers=HEADERS, timeout=20)
+            r = session.get(url, timeout=TIMEOUT)
             r.raise_for_status()
             return r.text
-        except:
-            time.sleep(2)
+        except Exception:
+            time.sleep(1 + i)
     return None
 
 
@@ -35,10 +44,15 @@ def fetch(url):
 # GET ALL BOOK CODES
 # -----------------------------
 def get_book_codes():
+
     html = fetch(BASE_URL)
+
+    if not html:
+        return []
+
     soup = BeautifulSoup(html, "lxml")
 
-    codes = []
+    codes = set()
 
     for option in soup.find_all("option"):
         val = option.get("value")
@@ -46,16 +60,18 @@ def get_book_codes():
         if val and val[0].isdigit():
             cls = int(val[0])
             if 6 <= cls <= 12:
-                codes.append(val)
+                codes.add(val)
 
-    return list(set(codes))
+    return list(codes)
 
 
 # -----------------------------
-# GET PDF LINKS FROM BOOK
+# GET PDF LINKS
 # -----------------------------
 def get_pdfs(book_code):
+
     url = f"{BASE_URL}?{book_code}"
+
     html = fetch(url)
 
     if not html:
@@ -78,55 +94,62 @@ def get_pdfs(book_code):
 
 
 # -----------------------------
-# DOWNLOAD FILE
+# DOWNLOAD FILE (FAST)
 # -----------------------------
-def download(url, path):
-    try:
-        for i in range(RETRIES):
-            try:
-                r = requests.get(url, headers=HEADERS, timeout=30)
-                r.raise_for_status()
+def download_file(url, path):
 
-                with open(path, "wb") as f:
-                    f.write(r.content)
+    if os.path.exists(path):
+        return
 
-                print(f"✅ {path}")
-                return
-            except:
-                time.sleep(2)
+    for i in range(RETRIES):
+        try:
+            r = session.get(url, timeout=TIMEOUT)
+            r.raise_for_status()
 
-        print(f"❌ Failed: {url}")
+            with open(path, "wb") as f:
+                f.write(r.content)
 
-    except Exception as e:
-        print(f"❌ Error: {e}")
+            print(f"✅ {path}")
+            return
+
+        except Exception:
+            time.sleep(1 + i)
+
+    print(f"❌ Failed: {url}")
 
 
 # -----------------------------
-# PROCESS BOOK
+# PROCESS BOOK (PARALLEL INSIDE)
 # -----------------------------
 def process_book(code):
 
-    cls = code[0]
+    try:
+        cls = code[0]
 
-    print(f"📘 Processing Book: {code}")
+        pdfs = get_pdfs(code)
 
-    pdfs = get_pdfs(code)
+        if not pdfs:
+            return
 
-    if not pdfs:
-        return
-
-    subject = code
-
-    for i, pdf in enumerate(pdfs, 1):
-        folder = f"{DOWNLOAD_BASE}/class{cls}/{subject}"
+        subject = code
+        folder = os.path.join(DOWNLOAD_BASE, f"class{cls}", subject)
         os.makedirs(folder, exist_ok=True)
 
-        path = f"{folder}/chapter{i}.pdf"
+        tasks = []
 
-        if os.path.exists(path):
-            continue
+        # 🔥 parallel per chapter
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            for i, pdf in enumerate(pdfs, 1):
 
-        download(pdf, path)
+                path = os.path.join(folder, f"chapter{i}.pdf")
+
+                tasks.append(ex.submit(download_file, pdf, path))
+
+            for t in tasks:
+                t.result()
+
+    except Exception as e:
+        print(f"❌ Book failed: {code} | {e}")
 
 
 # -----------------------------
@@ -134,16 +157,18 @@ def process_book(code):
 # -----------------------------
 def main():
 
-    print("🚀 Fetching all NCERT books...")
+    print("🚀 NCERT DOWNLOAD START")
 
     codes = get_book_codes()
 
-    print(f"📚 Found {len(codes)} books")
+    print(f"📚 Books: {len(codes)}")
+    print(f"⚡ Workers: {MAX_WORKERS}")
 
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
+    # 🔥 parallel per book
+    with ThreadPoolExecutor(MAX_WORKERS) as ex:
         ex.map(process_book, codes)
 
-    print("🔥 ALL NCERT DOWNLOAD COMPLETE")
+    print("🔥 NCERT DOWNLOAD COMPLETE")
 
 
 # -----------------------------
