@@ -2,91 +2,99 @@
 
 import re
 
+# -----------------------------
+# PRECOMPILED REGEX (FAST)
+# -----------------------------
+RE_MULTI_NEWLINE = re.compile(r'\n+')
+RE_MULTI_SPACE = re.compile(r'\s+')
+RE_UNICODE_SPACE = re.compile(r'\xa0')
+RE_CHAPTER = re.compile(r'(?:CHAPTER|Chapter)\s+\d+')
+RE_SAFE_NAME = re.compile(r'[^a-z0-9]+')
+
 
 # -----------------------------
-# CLEAN TEXT (VERY IMPORTANT)
+# CLEAN TEXT (OPTIMIZED)
 # -----------------------------
 def clean_text(text: str) -> str:
     """
-    Cleans raw extracted PDF text.
-    - Removes extra spaces
-    - Fixes broken lines
-    - Normalizes structure
+    Fast text normalization:
+    - removes unicode junk
+    - collapses spaces/newlines
     """
 
-    # remove weird unicode spaces
-    text = re.sub(r'\xa0', ' ', text)
+    if not text:
+        return ""
 
-    # collapse multiple newlines
-    text = re.sub(r'\n+', '\n', text)
-
-    # collapse multiple spaces
-    text = re.sub(r'\s+', ' ', text)
+    text = RE_UNICODE_SPACE.sub(' ', text)
+    text = RE_MULTI_NEWLINE.sub('\n', text)
+    text = RE_MULTI_SPACE.sub(' ', text)
 
     return text.strip()
 
 
 # -----------------------------
-# SPLIT CHAPTERS (NCERT STYLE)
+# SPLIT CHAPTERS (FAST)
 # -----------------------------
 def split_chapters(text: str):
     """
-    Splits text into chapters using NCERT patterns.
-
-    Handles:
-    - CHAPTER 1
-    - Chapter 1
+    Fast chapter split using precompiled regex
     """
 
-    parts = re.split(r'(?:CHAPTER|Chapter)\s+\d+', text)
+    parts = RE_CHAPTER.split(text)
 
-    # remove empty / small garbage
-    chapters = [p.strip() for p in parts if len(p.strip()) > 500]
-
-    return chapters
+    # fast filtering
+    return [p.strip() for p in parts if len(p) > 500]
 
 
 # -----------------------------
-# DETECT HEADINGS (CORE LOGIC)
+# HEADING DETECTION (IMPROVED + FAST)
 # -----------------------------
 def is_heading(line: str) -> bool:
     """
-    Detect if a line is a topic heading.
-
-    Rules:
-    - Short line
-    - Title case
-    - No punctuation ending
+    Fast + smarter heading detection
     """
+
+    if not line:
+        return False
 
     line = line.strip()
 
-    if len(line) < 5 or len(line) > 80:
+    length = len(line)
+
+    # quick filters (fast exit)
+    if length < 5 or length > 80:
         return False
 
-    if line.endswith('.'):
+    if line[-1] == '.':
         return False
 
-    # Title Case check
-    if line == line.title():
+    # avoid numbers-heavy lines
+    if sum(c.isdigit() for c in line) > 3:
+        return False
+
+    # Title Case OR UPPER CASE headings
+    if line == line.title() or line.isupper():
         return True
 
     return False
 
 
 # -----------------------------
-# SPLIT TOPICS (SMART)
+# SPLIT TOPICS (OPTIMIZED)
 # -----------------------------
 def split_topics(chapter_text: str):
     """
-    Splits chapter into topics using heading detection.
-    This is CRITICAL for creating thousands of JSONs.
+    High-speed topic segmentation
     """
+
+    if not chapter_text:
+        return []
 
     lines = chapter_text.split('\n')
 
     topics = []
     current = []
+    append_topic = topics.append
 
     for line in lines:
         line = line.strip()
@@ -94,31 +102,32 @@ def split_topics(chapter_text: str):
         if not line:
             continue
 
-        # if heading → start new topic
+        # heading triggers new topic
         if is_heading(line) and current:
-            topics.append(" ".join(current))
+            append_topic(" ".join(current))
             current = []
 
         current.append(line)
 
     if current:
-        topics.append(" ".join(current))
+        append_topic(" ".join(current))
 
-    # remove very small topics
-    topics = [t for t in topics if len(t) > 200]
-
-    return topics
+    # filter small topics (fast)
+    return [t for t in topics if len(t) > 200]
 
 
 # -----------------------------
-# EXTRA: SAFE FILE NAME
+# SAFE FILE NAME (FAST)
 # -----------------------------
 def safe_name(text: str) -> str:
     """
-    Converts text to safe folder/file name
+    Fast safe filename generator
     """
 
+    if not text:
+        return ""
+
     text = text.lower()
-    text = re.sub(r'[^a-z0-9]+', '_', text)
+    text = RE_SAFE_NAME.sub('_', text)
 
     return text.strip('_')
