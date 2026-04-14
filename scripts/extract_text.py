@@ -1,117 +1,61 @@
 # scripts/extract_text.py
 
-import sys
 import os
+import fitz
+import re
 from concurrent.futures import ThreadPoolExecutor
-from pdfminer.high_level import extract_text
 
-# -----------------------------
-# CONFIG
-# -----------------------------
 INPUT_DIR = "raw_ncert"
 OUTPUT_DIR = "processed_text"
 MAX_WORKERS = min(32, (os.cpu_count() or 4) * 2)
 
+def clean(text):
+    text = re.sub(r'\s+', ' ', text)
+    return text.strip()
 
-# -----------------------------
-# FAST PATH PARSER
-# -----------------------------
-def parse_path(path):
-    parts = path.replace("\\", "/").split("/")
+def parse(path):
+    p = path.replace("\\", "/").split("/")
+    return p[-3], p[-2], p[-1]
 
-    # expected: raw_ncert/class6/subject/chapter1.pdf
+def extract(pdf):
+    doc = fitz.open(pdf)
+    return " ".join([page.get_text() for page in doc])
+
+def process(pdf):
     try:
-        return parts[-3], parts[-2], parts[-1]
-    except:
-        return None, None, None
-
-
-# -----------------------------
-# FAST WRITE
-# -----------------------------
-def write_text(path, text):
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(text)
-
-
-# -----------------------------
-# PROCESS ONE PDF
-# -----------------------------
-def process_pdf(pdf_path):
-
-    try:
-        class_name, subject, file_name = parse_path(pdf_path)
-
-        if not class_name:
-            return
-
-        chapter_name = file_name[:-4]  # remove .pdf
-
-        out_dir = os.path.join(OUTPUT_DIR, class_name, subject)
+        cls, sub, name = parse(pdf)
+        out_dir = os.path.join(OUTPUT_DIR, cls, sub)
         os.makedirs(out_dir, exist_ok=True)
 
-        out_path = os.path.join(out_dir, f"{chapter_name}.txt")
+        out = os.path.join(out_dir, name.replace(".pdf", ".txt"))
 
-        # 🚀 SKIP if already processed
-        if os.path.exists(out_path):
+        if os.path.exists(out):
             return
 
-        # -----------------------------
-        # EXTRACT TEXT
-        # -----------------------------
-        text = extract_text(pdf_path)
+        text = extract(pdf)
+        text = clean(text)
 
-        if not text or len(text.strip()) < 50:
-            print(f"⚠️ Weak: {pdf_path}")
+        if len(text) < 200:
+            print(f"❌ Bad: {pdf}")
             return
 
-        # -----------------------------
-        # SAVE
-        # -----------------------------
-        write_text(out_path, text)
+        with open(out, "w", encoding="utf-8") as f:
+            f.write(text)
 
-        print(f"📄 {class_name}/{subject}/{chapter_name}")
+        print(f"✅ {cls}/{sub}/{name}")
 
     except Exception as e:
-        print(f"❌ {pdf_path} | {e}")
+        print(f"❌ {pdf} | {e}")
 
-
-# -----------------------------
-# COLLECT FILES (FAST)
-# -----------------------------
-def collect_pdfs():
-
-    files = []
-
-    for root, _, filenames in os.walk(INPUT_DIR):
-        for f in filenames:
-            if f.endswith(".pdf"):
-                files.append(os.path.join(root, f))
-
-    return files
-
-
-# -----------------------------
-# MAIN
-# -----------------------------
 def main():
+    files = []
+    for r,_,fs in os.walk(INPUT_DIR):
+        for f in fs:
+            if f.endswith(".pdf"):
+                files.append(os.path.join(r,f))
 
-    print("🚀 EXTRACTION START")
+    with ThreadPoolExecutor(MAX_WORKERS) as ex:
+        ex.map(process, files)
 
-    files = collect_pdfs()
-
-    print(f"📚 PDFs: {len(files)}")
-    print(f"⚡ Workers: {MAX_WORKERS}")
-
-    # 🚀 PARALLEL EXECUTION
-    with ThreadPoolExecutor(MAX_WORKERS) as executor:
-        executor.map(process_pdf, files)
-
-    print("🔥 EXTRACTION COMPLETE")
-
-
-# -----------------------------
-# ENTRY
-# -----------------------------
 if __name__ == "__main__":
     main()
