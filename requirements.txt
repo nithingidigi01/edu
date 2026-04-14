@@ -1,7 +1,8 @@
 requests
-pdfminer.six
 beautifulsoup4
 lxml
+pdfminer.six
 transformers
 torch
 sentencepiece
+PyMuPDF
