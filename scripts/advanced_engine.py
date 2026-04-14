@@ -1,20 +1,45 @@
 # scripts/advanced_engine.py
 
+import sys
 import os
 import json
 import random
 from concurrent.futures import ThreadPoolExecutor
 
+# FIX IMPORT PATH (CI SAFE)
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+# -----------------------------
+# CONFIG
+# -----------------------------
 BASE_DIR = "data/ncert"
-MAX_WORKERS = 4
+MAX_WORKERS = min(32, (os.cpu_count() or 4) * 2)
+
+# LIMITS (CRITICAL FOR SPEED)
+MAX_FACTS = 20
+MAX_AR = 40
+MAX_MULTI = 25
+MAX_ELIM = 40
 
 
 # -----------------------------
-# ASSERTION-REASON
+# FAST JSON WRITE
+# -----------------------------
+def write_json(path, data):
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(json.dumps(data, ensure_ascii=False))
+
+
+# -----------------------------
+# ASSERTION-REASON (CONTROLLED)
 # -----------------------------
 def assertion_reason(facts):
 
     questions = []
+
+    facts = facts[:MAX_FACTS]
+
+    count = 0
 
     for i in range(len(facts)):
         for j in range(len(facts)):
@@ -27,7 +52,7 @@ def assertion_reason(facts):
 
             questions.append({
                 "type": "assertion_reason",
-                "question": f"Assertion (A): {A}\nReason (R): {R}\nSelect the correct answer:",
+                "question": f"Assertion (A): {A}\nReason (R): {R}",
                 "options": [
                     "Both A and R are true and R explains A",
                     "Both A and R are true but R does not explain A",
@@ -38,15 +63,21 @@ def assertion_reason(facts):
                 "explanation": A
             })
 
+            count += 1
+            if count >= MAX_AR:
+                return questions
+
     return questions
 
 
 # -----------------------------
-# MULTI-STATEMENT
+# MULTI-STATEMENT (CONTROLLED)
 # -----------------------------
 def multi_statement(facts):
 
     questions = []
+
+    facts = facts[:MAX_FACTS]
 
     if len(facts) < 4:
         return questions
@@ -70,17 +101,25 @@ def multi_statement(facts):
             "explanation": stmts[0]
         })
 
+        if len(questions) >= MAX_MULTI:
+            break
+
     return questions
 
 
 # -----------------------------
-# ELIMINATION TYPE
+# ELIMINATION (CONTROLLED)
 # -----------------------------
 def elimination(facts):
 
     questions = []
 
+    facts = facts[:MAX_FACTS]
+
     for fact in facts:
+
+        if len(facts) < 2:
+            continue
 
         wrong = random.sample(facts, min(3, len(facts)))
 
@@ -94,6 +133,9 @@ def elimination(facts):
             "explanation": fact
         })
 
+        if len(questions) >= MAX_ELIM:
+            break
+
     return questions
 
 
@@ -105,6 +147,10 @@ def process_file(path):
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
+
+        # 🚀 SKIP if already processed
+        if "advanced_mcqs" in data and len(data["advanced_mcqs"]) > 0:
+            return
 
         facts = data.get("facts", [])
 
@@ -119,17 +165,16 @@ def process_file(path):
 
         data["advanced_mcqs"] = adv
 
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False)
+        write_json(path, data)
 
-        print(f"🔥 Advanced: {path}")
+        print(f"🔥 {path} ({len(adv)} advanced)")
 
     except Exception as e:
-        print(f"❌ Failed: {path} | {e}")
+        print(f"❌ {path} | {e}")
 
 
 # -----------------------------
-# COLLECT FILES
+# COLLECT FILES (FAST)
 # -----------------------------
 def collect():
 
@@ -148,17 +193,21 @@ def collect():
 # -----------------------------
 def main():
 
-    print("🚀 Advanced engine starting...")
+    print("🚀 ADVANCED ENGINE START")
 
     files = collect()
 
     print(f"📚 Topics: {len(files)}")
+    print(f"⚡ Workers: {MAX_WORKERS}")
 
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
+    with ThreadPoolExecutor(MAX_WORKERS) as ex:
         ex.map(process_file, files)
 
     print("🔥 ADVANCED ENGINE COMPLETE")
 
 
+# -----------------------------
+# ENTRY
+# -----------------------------
 if __name__ == "__main__":
     main()
