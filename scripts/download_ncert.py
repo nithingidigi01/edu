@@ -4,76 +4,39 @@ import os
 import requests
 from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor
-import time
 
-# -----------------------------
-# CONFIG
-# -----------------------------
-BASE_URL = "https://ncert.nic.in/textbook.php"
-DOWNLOAD_BASE = "raw_ncert"
+BASE = "https://ncert.nic.in/textbook.php"
+OUT = "raw_ncert"
+HEAD = {"User-Agent": "Mozilla/5.0"}
 
-MAX_WORKERS = min(32, (os.cpu_count() or 4) * 2)
-RETRIES = 3
-TIMEOUT = 20
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0",
-    "Connection": "keep-alive"
-}
-
-# 🔥 GLOBAL SESSION (10x faster)
 session = requests.Session()
-session.headers.update(HEADERS)
+session.headers.update(HEAD)
 
-
-# -----------------------------
-# FETCH WITH RETRY
-# -----------------------------
 def fetch(url):
-    for i in range(RETRIES):
-        try:
-            r = session.get(url, timeout=TIMEOUT)
-            r.raise_for_status()
-            return r.text
-        except Exception:
-            time.sleep(1 + i)
-    return None
+    try:
+        r = session.get(url, timeout=20)
+        r.raise_for_status()
+        return r.text
+    except:
+        return None
 
-
-# -----------------------------
-# GET ALL BOOK CODES
-# -----------------------------
-def get_book_codes():
-
-    html = fetch(BASE_URL)
-
-    if not html:
-        return []
-
+def get_books():
+    html = fetch(BASE)
     soup = BeautifulSoup(html, "lxml")
 
-    codes = set()
+    codes = []
 
-    for option in soup.find_all("option"):
-        val = option.get("value")
-
+    for opt in soup.find_all("option"):
+        val = opt.get("value")
         if val and val[0].isdigit():
             cls = int(val[0])
             if 6 <= cls <= 12:
-                codes.add(val)
+                codes.append(val)
 
-    return list(codes)
+    return list(set(codes))
 
-
-# -----------------------------
-# GET PDF LINKS
-# -----------------------------
-def get_pdfs(book_code):
-
-    url = f"{BASE_URL}?{book_code}"
-
-    html = fetch(url)
-
+def get_pdfs(code):
+    html = fetch(f"{BASE}?{code}")
     if not html:
         return []
 
@@ -82,97 +45,48 @@ def get_pdfs(book_code):
     pdfs = []
 
     for a in soup.find_all("a", href=True):
-        href = a["href"]
-
-        if ".pdf" in href:
-            if not href.startswith("http"):
-                href = "https://ncert.nic.in/" + href
-
-            pdfs.append(href)
+        h = a["href"]
+        if ".pdf" in h:
+            if not h.startswith("http"):
+                h = "https://ncert.nic.in/" + h
+            pdfs.append(h)
 
     return pdfs
 
-
-# -----------------------------
-# DOWNLOAD FILE (FAST)
-# -----------------------------
-def download_file(url, path):
-
+def download(url, path):
     if os.path.exists(path):
         return
-
-    for i in range(RETRIES):
-        try:
-            r = session.get(url, timeout=TIMEOUT)
-            r.raise_for_status()
-
-            with open(path, "wb") as f:
-                f.write(r.content)
-
-            print(f"✅ {path}")
-            return
-
-        except Exception:
-            time.sleep(1 + i)
-
-    print(f"❌ Failed: {url}")
-
-
-# -----------------------------
-# PROCESS BOOK (PARALLEL INSIDE)
-# -----------------------------
-def process_book(code):
-
     try:
-        cls = code[0]
+        r = session.get(url, timeout=20)
+        r.raise_for_status()
+        with open(path, "wb") as f:
+            f.write(r.content)
+        print("✅", path)
+    except:
+        print("❌", url)
 
-        pdfs = get_pdfs(code)
+def process(code):
+    cls = f"class{code[0]}"
+    sub = code
 
-        if not pdfs:
-            return
+    pdfs = get_pdfs(code)
+    if not pdfs:
+        return
 
-        subject = code
-        folder = os.path.join(DOWNLOAD_BASE, f"class{cls}", subject)
-        os.makedirs(folder, exist_ok=True)
+    folder = os.path.join(OUT, cls, sub)
+    os.makedirs(folder, exist_ok=True)
 
-        tasks = []
+    for i, pdf in enumerate(pdfs, 1):
+        path = os.path.join(folder, f"chapter{i}.pdf")
+        download(pdf, path)
 
-        # 🔥 parallel per chapter
-        with ThreadPoolExecutor(max_workers=6) as ex:
-            for i, pdf in enumerate(pdfs, 1):
-
-                path = os.path.join(folder, f"chapter{i}.pdf")
-
-                tasks.append(ex.submit(download_file, pdf, path))
-
-            for t in tasks:
-                t.result()
-
-    except Exception as e:
-        print(f"❌ Book failed: {code} | {e}")
-
-
-# -----------------------------
-# MAIN
-# -----------------------------
 def main():
+    codes = get_books()
 
-    print("🚀 NCERT DOWNLOAD START")
+    print("Books:", len(codes))
 
-    codes = get_book_codes()
+    with ThreadPoolExecutor(16) as ex:
+        ex.map(process, codes)
 
-    print(f"📚 Books: {len(codes)}")
-    print(f"⚡ Workers: {MAX_WORKERS}")
-
-    # 🔥 parallel per book
-    with ThreadPoolExecutor(MAX_WORKERS) as ex:
-        ex.map(process_book, codes)
-
-    print("🔥 NCERT DOWNLOAD COMPLETE")
-
-
-# -----------------------------
-# ENTRY
-# -----------------------------
 if __name__ == "__main__":
     main()
