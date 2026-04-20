@@ -5,40 +5,26 @@ import os
 import json
 from concurrent.futures import ThreadPoolExecutor
 
-# -----------------------------
-# FIX IMPORT PATH (CI SAFE)
-# -----------------------------
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from scripts.ai_engine import generate_mcqs_from_topic
-from scripts.mcq_parser import parse_mcq_block
 
 
-# -----------------------------
-# CONFIG
-# -----------------------------
 BASE_DIR = "data/ncert"
 MAX_WORKERS = min(32, (os.cpu_count() or 4) * 2)
 
 
-# -----------------------------
-# FAST JSON WRITE
-# -----------------------------
 def write_json(path, data):
     with open(path, "w", encoding="utf-8") as f:
         f.write(json.dumps(data, ensure_ascii=False))
 
 
-# -----------------------------
-# PROCESS ONE FILE
-# -----------------------------
 def process_file(path):
 
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        # 🚀 SKIP if already processed
         if "mcqs" in data and len(data["mcqs"]) > 0:
             return
 
@@ -47,44 +33,22 @@ def process_file(path):
         if not content:
             return
 
-        # -----------------------------
-        # GENERATE MCQs FROM TOPIC (AI)
-        # -----------------------------
-        raw_blocks = generate_mcqs_from_topic(content)
+        mcqs = generate_mcqs_from_topic(content)
 
-        if not raw_blocks:
+        if not mcqs:
+            print(f"⚠️ No MCQs generated: {path}")
             return
 
-        # -----------------------------
-        # PARSE INTO STRUCTURED MCQs
-        # -----------------------------
-        structured = []
-
-        for block in raw_blocks:
-            parsed = parse_mcq_block(block)
-            if parsed:
-                structured.extend(parsed)
-
-        if not structured:
-            print(f"⚠️ No MCQs parsed: {path}")
-            return
-
-        # -----------------------------
-        # UPDATE JSON
-        # -----------------------------
-        data["mcqs"] = structured
+        data["mcqs"] = mcqs
 
         write_json(path, data)
 
-        print(f"✅ MCQs Generated: {path} ({len(structured)} questions)")
+        print(f"✅ {path} ({len(mcqs)} MCQs)")
 
     except Exception as e:
         print(f"❌ Failed: {path} | {e}")
 
 
-# -----------------------------
-# COLLECT ALL JSON FILES
-# -----------------------------
 def collect_files():
 
     files = []
@@ -97,16 +61,13 @@ def collect_files():
     return files
 
 
-# -----------------------------
-# MAIN
-# -----------------------------
 def main():
 
     print("🚀 MCQ ENGINE START")
 
     files = collect_files()
 
-    print(f"📚 Topics Found: {len(files)}")
+    print(f"📚 Topics: {len(files)}")
     print(f"⚡ Workers: {MAX_WORKERS}")
 
     with ThreadPoolExecutor(MAX_WORKERS) as executor:
@@ -115,8 +76,5 @@ def main():
     print("🔥 MCQ ENGINE COMPLETE")
 
 
-# -----------------------------
-# ENTRY
-# -----------------------------
 if __name__ == "__main__":
     main()
