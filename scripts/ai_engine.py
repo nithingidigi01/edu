@@ -1,6 +1,7 @@
 # scripts/ai_engine.py
 
 import threading
+import json
 from transformers import pipeline
 
 _model = None
@@ -8,7 +9,7 @@ _lock = threading.Lock()
 
 
 # -----------------------------
-# LOAD MODEL (ONCE)
+# LOAD MODEL
 # -----------------------------
 def get_model():
     global _model
@@ -18,14 +19,14 @@ def get_model():
             if _model is None:
                 _model = pipeline(
                     "text2text-generation",
-                    model="google/flan-t5-base",   # better quality
+                    model="google/flan-t5-base",
                     device=-1
                 )
     return _model
 
 
 # -----------------------------
-# GENERATE MCQs FROM TOPIC
+# GENERATE STRUCTURED MCQs
 # -----------------------------
 def generate_mcqs_from_topic(text):
 
@@ -34,25 +35,31 @@ def generate_mcqs_from_topic(text):
 
     model = get_model()
 
-    text = text[:2000]  # limit for performance
+    text = text[:2000]
 
     prompt = f"""
-You are an expert UPSC exam question paper setter.
+You are an expert UPSC exam paper setter.
 
-From the below topic, generate a large number of high-quality MCQs.
+From the topic below, generate multiple high-quality MCQs.
 
-Rules:
-- Cover ALL concepts in the topic
-- Include:
-    - conceptual questions
-    - logical reasoning
-    - pattern-based questions
-    - tricky questions
-    - application-based questions
-- Each question must have:
-    - 4 options
-    - correct answer
-    - clear explanation
+STRICT RULES:
+- Output ONLY valid JSON
+- No extra text
+- Format EXACTLY like this:
+
+[
+  {{
+    "question": "...",
+    "options": ["...", "...", "...", "..."],
+    "answer": 0,
+    "explanation": "..."
+  }}
+]
+
+RULES:
+- Cover ALL concepts
+- Include logical, conceptual, tricky questions
+- Answer must be index (0-3)
 
 Topic:
 {text}
@@ -61,12 +68,27 @@ Topic:
     try:
         result = model(
             prompt,
-            max_length=512,
+            max_length=1024,
             do_sample=False
         )[0]["generated_text"]
 
-        return [result]
+        # -----------------------------
+        # CLEAN + PARSE JSON
+        # -----------------------------
+        result = result.strip()
+
+        # fix common issues
+        if result.startswith("```"):
+            result = result.strip("```")
+
+        # attempt parse
+        data = json.loads(result)
+
+        if isinstance(data, list):
+            return data
+
+        return []
 
     except Exception as e:
-        print("❌ AI Error:", e)
+        print("❌ JSON Parse Failed:", e)
         return []
