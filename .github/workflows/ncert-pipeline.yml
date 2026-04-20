@@ -14,13 +14,13 @@ jobs:
       # CHECKOUT
       # -----------------------------
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       # -----------------------------
-      # PYTHON SETUP
+      # SETUP PYTHON
       # -----------------------------
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -28,16 +28,16 @@ jobs:
       # CACHE PIP
       # -----------------------------
       - name: Cache pip
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cache/pip
           key: pip-${{ hashFiles('**/requirements.txt') }}
 
       # -----------------------------
-      # CACHE HF MODELS (IMPORTANT)
+      # CACHE HF MODELS
       # -----------------------------
       - name: Cache HuggingFace
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cache/huggingface
           key: hf-cache
@@ -53,11 +53,11 @@ jobs:
       # -----------------------------
       # VERIFY PyMuPDF
       # -----------------------------
-      - name: Verify fitz
+      - name: Verify PyMuPDF
         run: python -c "import fitz; print('PyMuPDF OK')"
 
       # -----------------------------
-      # PREPARE OUTPUT DIRS
+      # PREPARE FOLDERS
       # -----------------------------
       - name: Prepare folders
         run: |
@@ -65,7 +65,7 @@ jobs:
           mkdir -p data/ncert
 
       # -----------------------------
-      # EXTRACT TEXT
+      # EXTRACT TEXT (SAFE VERSION)
       # -----------------------------
       - name: Extract Text
         run: python scripts/extract_text.py
@@ -77,18 +77,18 @@ jobs:
         run: python scripts/segment_topics.py
 
       # -----------------------------
-      # GENERATE MCQs (CORE)
+      # GENERATE MCQs
       # -----------------------------
       - name: Generate MCQs
         run: python scripts/generate_engine.py
 
       # -----------------------------
-      # SHOW OUTPUT (DEBUG)
+      # DEBUG OUTPUT
       # -----------------------------
-      - name: Show Generated Files
+      - name: Show output structure
         run: |
-          echo "Generated JSON files:"
-          find data/ncert/class6 -type f | head -n 50
+          echo "===== GENERATED FILES ====="
+          find data/ncert/class6 -type f | head -n 50 || true
 
       # -----------------------------
       # COMMIT RESULTS
@@ -98,7 +98,7 @@ jobs:
           git config --global user.name "vidhwaan-bot"
           git config --global user.email "bot@vidhwaan.com"
 
-          git pull origin main --rebase
+          git pull origin main --rebase || true
 
           git add data processed_text
 
