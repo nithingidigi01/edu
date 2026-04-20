@@ -1,0 +1,8 @@
+requests
+beautifulsoup4
+lxml
+pdfminer.six
+transformers
+torch
+sentencepiece
+PyMuPDF
