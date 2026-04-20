@@ -6,6 +6,10 @@ from transformers import pipeline
 _model = None
 _lock = threading.Lock()
 
+
+# -----------------------------
+# LOAD MODEL (ONCE)
+# -----------------------------
 def get_model():
     global _model
 
@@ -13,39 +17,56 @@ def get_model():
         with _lock:
             if _model is None:
                 _model = pipeline(
-                    "text-generation",   # ✅ FIXED
-                    model="google/flan-t5-small",
+                    "text2text-generation",
+                    model="google/flan-t5-base",   # better quality
                     device=-1
                 )
     return _model
 
 
-def extract_facts(text):
+# -----------------------------
+# GENERATE MCQs FROM TOPIC
+# -----------------------------
+def generate_mcqs_from_topic(text):
 
     if not text:
         return []
 
     model = get_model()
 
-    text = text[:1200]
+    text = text[:2000]  # limit for performance
 
-    prompt = f"Extract key facts:\n{text}"
+    prompt = f"""
+You are an expert UPSC exam question paper setter.
+
+From the below topic, generate a large number of high-quality MCQs.
+
+Rules:
+- Cover ALL concepts in the topic
+- Include:
+    - conceptual questions
+    - logical reasoning
+    - pattern-based questions
+    - tricky questions
+    - application-based questions
+- Each question must have:
+    - 4 options
+    - correct answer
+    - clear explanation
+
+Topic:
+{text}
+"""
 
     try:
-        out = model(prompt, max_length=200)[0]["generated_text"]
+        result = model(
+            prompt,
+            max_length=512,
+            do_sample=False
+        )[0]["generated_text"]
 
-        facts = []
-        seen = set()
-
-        for line in out.split("\n"):
-            line = line.strip()
-
-            if len(line) > 20 and line not in seen:
-                facts.append(line)
-                seen.add(line)
-
-        return facts
+        return [result]
 
     except Exception as e:
-        print(f"❌ AI Error: {e}")
+        print("❌ AI Error:", e)
         return []
