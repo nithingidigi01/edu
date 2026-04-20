@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from scripts.ai_engine import generate_mcqs_from_topic
+from scripts.mcq_parser import parse_mcq_block
 
 
 # -----------------------------
@@ -47,21 +48,35 @@ def process_file(path):
             return
 
         # -----------------------------
-        # GENERATE MCQs FROM TOPIC
+        # GENERATE MCQs FROM TOPIC (AI)
         # -----------------------------
-        mcqs = generate_mcqs_from_topic(content)
+        raw_blocks = generate_mcqs_from_topic(content)
 
-        if not mcqs:
+        if not raw_blocks:
             return
 
         # -----------------------------
-        # UPDATE DATA
+        # PARSE INTO STRUCTURED MCQs
         # -----------------------------
-        data["mcqs"] = mcqs
+        structured = []
+
+        for block in raw_blocks:
+            parsed = parse_mcq_block(block)
+            if parsed:
+                structured.extend(parsed)
+
+        if not structured:
+            print(f"⚠️ No MCQs parsed: {path}")
+            return
+
+        # -----------------------------
+        # UPDATE JSON
+        # -----------------------------
+        data["mcqs"] = structured
 
         write_json(path, data)
 
-        print(f"✅ MCQs Generated: {path}")
+        print(f"✅ MCQs Generated: {path} ({len(structured)} questions)")
 
     except Exception as e:
         print(f"❌ Failed: {path} | {e}")
