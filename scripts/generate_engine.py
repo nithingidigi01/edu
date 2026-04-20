@@ -3,23 +3,21 @@
 import sys
 import os
 import json
-import itertools
 from concurrent.futures import ThreadPoolExecutor
 
+# -----------------------------
 # FIX IMPORT PATH (CI SAFE)
+# -----------------------------
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from scripts.ai_engine import extract_facts
+from scripts.ai_engine import generate_mcqs_from_topic
+
 
 # -----------------------------
 # CONFIG
 # -----------------------------
 BASE_DIR = "data/ncert"
 MAX_WORKERS = min(32, (os.cpu_count() or 4) * 2)
-
-# LIMITS (VERY IMPORTANT FOR PERFORMANCE)
-MAX_FACTS = 25          # limit facts per topic
-MAX_COMBINATIONS = 40   # limit combinations per fact
 
 
 # -----------------------------
@@ -31,65 +29,6 @@ def write_json(path, data):
 
 
 # -----------------------------
-# GENERATE PATTERNS (FAST)
-# -----------------------------
-def generate_patterns(fact, distractors):
-
-    return [
-        {
-            "type": "direct",
-            "question": "Which of the following statements is correct?",
-            "options": [fact] + distractors,
-            "answer": 0,
-            "explanation": fact
-        },
-        {
-            "type": "negative",
-            "question": "Which of the following statements is NOT correct?",
-            "options": distractors + [fact],
-            "answer": len(distractors),
-            "explanation": fact
-        },
-        {
-            "type": "statement",
-            "question": f"Consider the following statement:\n{fact}\nWhich is correct?",
-            "options": ["Correct", "Incorrect"],
-            "answer": 0,
-            "explanation": fact
-        }
-    ]
-
-
-# -----------------------------
-# GENERATE MCQs (CONTROLLED)
-# -----------------------------
-def generate_mcqs(facts):
-
-    mcqs = []
-
-    # LIMIT facts (critical for speed)
-    facts = facts[:MAX_FACTS]
-
-    for i, fact in enumerate(facts):
-
-        others = [f for j, f in enumerate(facts) if j != i]
-
-        if not others:
-            continue
-
-        # LIMIT combinations (prevents explosion)
-        combos = itertools.islice(
-            itertools.combinations(others, min(3, len(others))),
-            MAX_COMBINATIONS
-        )
-
-        for combo in combos:
-            mcqs.extend(generate_patterns(fact, list(combo)))
-
-    return mcqs
-
-
-# -----------------------------
 # PROCESS ONE FILE
 # -----------------------------
 def process_file(path):
@@ -98,7 +37,7 @@ def process_file(path):
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        # SKIP if already processed (huge speed boost)
+        # 🚀 SKIP if already processed
         if "mcqs" in data and len(data["mcqs"]) > 0:
             return
 
@@ -108,38 +47,28 @@ def process_file(path):
             return
 
         # -----------------------------
-        # FACT EXTRACTION (CACHED)
+        # GENERATE MCQs FROM TOPIC
         # -----------------------------
-        facts = data.get("facts")
+        mcqs = generate_mcqs_from_topic(content)
 
-        if not facts:
-            facts = extract_facts(content)
-            facts = list(set(facts))  # dedupe
-
-        if not facts:
+        if not mcqs:
             return
-
-        # -----------------------------
-        # MCQ GENERATION
-        # -----------------------------
-        mcqs = generate_mcqs(facts)
 
         # -----------------------------
         # UPDATE DATA
         # -----------------------------
-        data["facts"] = facts
         data["mcqs"] = mcqs
 
         write_json(path, data)
 
-        print(f"✅ {path} ({len(mcqs)} MCQs)")
+        print(f"✅ MCQs Generated: {path}")
 
     except Exception as e:
-        print(f"❌ {path} | {e}")
+        print(f"❌ Failed: {path} | {e}")
 
 
 # -----------------------------
-# COLLECT FILES (FAST)
+# COLLECT ALL JSON FILES
 # -----------------------------
 def collect_files():
 
@@ -162,7 +91,7 @@ def main():
 
     files = collect_files()
 
-    print(f"📚 Topics: {len(files)}")
+    print(f"📚 Topics Found: {len(files)}")
     print(f"⚡ Workers: {MAX_WORKERS}")
 
     with ThreadPoolExecutor(MAX_WORKERS) as executor:
